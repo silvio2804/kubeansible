@@ -1,0 +1,15 @@
+- hosts: workers
+  become: yes
+  gather_facts: yes
+
+  tasks:
+   - name: Fetch the join command we wrote to a file in previous step and move it to the worker node.
+     become: yes
+     copy:
+       src: ./kube_join_command
+       dest: /etc/kube_join_command
+       mode: 0777
+
+   - name: Join the Worker node to the cluster.
+     become: yes
+     command: sh /etc/kube_join_command

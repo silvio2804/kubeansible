@@ -1,0 +1,46 @@
+- name: Deploy Apache server on Kubernetes
+  hosts: master
+  become: yes
+  tasks:
+    - name: Copy pvc and pvs manifest
+      copy:
+        src: config/nfs.yml
+        dest: /root/nfs.yml
+
+    - name: Apply nfs.yml
+      shell: kubectl apply -f /root/nfs.yml
+
+    - name: Copy Apache deployment manifest
+      copy:
+        src: config/apache-deployment-nfs.yml
+        dest: /root/apache-deployment-nfs.yml
+
+    - name: Apply Apache deployment
+      shell: kubectl apply -f /root/apache-deployment-nfs.yml
+
+    - name: Configure Horizontal Pod Autoscaler
+      shell: kubectl autoscale deployment apache-php-server --cpu-percent=25 --min=2 --max=5
+
+    - name: Copy Metric Server manifest
+      copy:
+        src: config/metric-server.yml
+        dest: /root/metric-server.yml
+
+    - name: Install Metric Server
+      shell: kubectl apply -f /root/metric-server.yml
+
+    - name: Apply MetalLB manifest
+      shell: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/main/config/manifests/metallb-native.yaml
+
+    - name: Wait MetalLB be ready
+      shell: kubectl wait --namespace metallb-system --for=condition=Ready pod --all --timeout=120s
+      async: 120
+      poll: 5
+
+    - name: Copy MetalLB configuration
+      copy:
+        src: config/deploy_metallb.yml
+        dest: /root/deploy_metallb.yml
+
+    - name: Apply MetalLB configuration
+      shell: kubectl apply -f /root/deploy_metallb.yml

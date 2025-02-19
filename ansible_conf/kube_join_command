@@ -1,0 +1,1 @@
+kubeadm join 192.168.1.6:6443 --token dovpri.6aqlkqpnixwy6uq5 --discovery-token-ca-cert-hash sha256:88c91efb30f4062b8f3b421689d0115ce57e5b3116f01c3b94b8dbcbd4b6b16c 

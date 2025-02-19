@@ -1,0 +1,78 @@
+---
+- hosts: "masters, workers"
+  remote_user: root
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+    - name: Create containerd configuration file
+      file:
+        path: "/etc/modules-load.d/containerd.conf"
+        state: touch
+
+    - name: Set up containerd prerequisites
+      blockinfile:
+        path: "/etc/modules-load.d/containerd.conf"
+        block: |
+          overlay
+          br_netfilter
+
+    - name: Load required kernel modules
+      shell: |
+        modprobe overlay
+        modprobe br_netfilter
+
+    - name: Configure sysctl for Kubernetes
+      blockinfile:
+        path: "/etc/sysctl.d/99-kubernetes-cri.conf"
+        create: yes
+        block: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+
+    - name: Apply sysctl settings
+      command: sysctl --system
+
+    - name: Install containerd and configure it
+      shell: |
+        sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        dnf install -y containerd.io
+        #mkdir -p /etc/containerd
+        containerd config default | tee /etc/containerd/config.toml
+        sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+        systemctl restart containerd
+        systemctl enable containerd
+        systemctl status containerd
+
+    - name: Add Kubernetes repository
+      copy:
+        dest: "/etc/yum.repos.d/kubernetes.repo"
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+          exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+        mode: "0644"
+
+    - name: Install Kubernetes components
+      shell: |
+        yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+    - name: Disable swap
+      shell: |
+        swapoff -a
+        sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+    - name: Start and enable kubelet service
+      systemd:
+        name: kubelet
+        enabled: yes
+        state: started

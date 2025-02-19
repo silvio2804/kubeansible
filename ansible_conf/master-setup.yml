@@ -1,0 +1,85 @@
+---
+- hosts: masters
+  become: yes
+  tasks:
+    - name: Start and enable kubelet service
+      systemd:
+        name: kubelet
+        enabled: yes
+        state: started
+
+    - name: Initialize Kubernetes cluster
+      shell: kubeadm init --pod-network-cidr=10.244.0.0/16
+      async: 600
+      poll: 10
+      register: kubeadm_init_output
+      failed_when: kubeadm_init_output.rc != 0
+
+    - name: Debug kubeadm init output
+      debug:
+        var: kubeadm_init_output.stdout
+
+    - name: Create .kube directory for root
+      file:
+        path: /root/.kube
+        state: directory
+        mode: 0755
+
+    - name: Ensure .kube directory exists
+      file:
+        path: "/root/.kube"
+        state: directory
+        mode: 0755
+
+    - name: Copy admin.conf to root's kubeconfig
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Set KUBECONFIG environment variable for root
+      lineinfile:
+        path: "/root/.bashrc"
+        line: "export KUBECONFIG=/root/.kube/config"
+        create: yes
+
+    - name: Wait for Kubernetes API to be ready
+      shell: until kubectl get nodes; do sleep 10; done
+      retries: 30
+      delay: 10
+      register: kube_ready
+      failed_when: kube_ready.rc != 0
+
+    - name: Apply Calico network manifest
+      shell: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+      when: kube_ready.rc == 0
+      register: calico_output
+      ignore_errors: yes
+
+    - name: Debug Calico installation output
+      debug:
+        var: calico_output.stdout
+      when: calico_output is defined
+
+    - name: Check for errors in Calico installation
+      debug:
+        msg: "Error in Calico installation: {{ calico_output.stderr }}"
+      when: calico_output.stderr is defined and calico_output.stderr != ""
+
+    - name: Wait for kubeadm to be ready
+      shell: until kubeadm token create --print-join-command; do sleep 10; done
+      retries: 30
+      delay: 10
+      register: kube_token
+      failed_when: kube_token.rc != 0
+
+    - name: Generate join command for worker nodes
+      shell: kubeadm token create --print-join-command
+      when: kube_token.rc == 0
+      register: kube_join_command
+
+    - name: Save join command to a local file
+      local_action: copy content="{{ kube_join_command.stdout_lines[0] }}" dest="./kube_join_command" mode=0777
