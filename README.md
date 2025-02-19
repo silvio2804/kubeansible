@@ -38,7 +38,7 @@ Before running this Ansible playbook, ensure you have:
 ### 1. Clone the Repository
 ```sh
 git clone https://github.com/your-repo/ansible-kubernetes.git
-cd ansible-kubernetes
+cd ansible_conf
 ```
 
 ### 2. Verify connectivity
