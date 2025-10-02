@@ -36,9 +36,9 @@ Before running this Ansible playbook, ensure you have:
 ## Installation Steps
 
 ### 1. Clone the Repository
-```sh
-git clone https://github.com/your-repo/ansible-kubernetes.git
-cd ansible_conf
+```
+git clone https://github.com/silvio2804/kubeansible.git
+cd kubeansible
 ```
 
 ### 2. Verify connectivity
